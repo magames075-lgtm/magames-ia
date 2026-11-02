@@ -75,6 +75,7 @@ def err(status: int, msg: str, retry: int = 0):
 
 # circuit breaker por provedor
 _down: dict[str, float] = {}
+LAST_ERR: dict[str, str] = {}
 
 
 def is_down(p: str) -> bool:
@@ -96,7 +97,7 @@ async def health():
             "chat": [p for p, k in (("gemini", GEMINI_KEY), ("groq", GROQ_KEY), ("llm7", "1")) if k],
             "image": [p for p, k in (("gemini", GEMINI_KEY), ("pollinations-key", POLL_KEY), ("pollinations", "1"), ("foto-livre", "1")) if k],
             "tts": "edge-tts", "stt": bool(GROQ_KEY), "video_queue": videomod.queue_size(),
-            "down": {p: int(t - time.time()) for p, t in _down.items() if t > time.time()}}
+            "down": {p: int(t - time.time()) for p, t in _down.items() if t > time.time()}, "last_errors": LAST_ERR}
 
 
 # ---------------- CHAT ----------------
@@ -213,6 +214,7 @@ async def chat_stream(messages, temperature=0.7, prefer=None):
                     yield ("error", "a resposta foi interrompida; toque em regenerar")
                     return
                 errors.append(str(e)[:200])
+                LAST_ERR[name] = time.strftime("%H:%M ") + str(e)[:200]
                 if st == 429:
                     mark_down(name, 60 if attempt else 20)
                     break
@@ -378,6 +380,7 @@ async def generate_image(prompt, w=1024, h=1024, seed=None, allow_stock=False, s
         except Exception as e:  # noqa
             st = getattr(e, "status", 0)
             errors.append(str(e)[:160])
+            LAST_ERR[name + "-img"] = time.strftime("%H:%M ") + str(e)[:200]
             retry = max(retry, getattr(e, "retry", 0))
             if name == "gemini":
                 mark_down("gemini-image", 3600 if st in (400, 403, 404, 429) else 120)
