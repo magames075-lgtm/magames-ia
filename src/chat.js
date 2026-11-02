@@ -18,6 +18,7 @@ import 'highlight.js/styles/atom-one-dark.css';
 import { settings, load, save, toast, uid, downloadBlob } from './store.js';
 import { chat as llmChat, PROVIDER_NAMES } from './llm.js';
 import { speakQuick, stopQuick } from './voice.js';
+import { apiFetch, friendly } from './api.js';
 
 Object.entries({ javascript, typescript, python, java, kotlin, bash, json, css, xml, html: xml, sql, cpp, csharp, php }).forEach(([k, v]) => hljs.registerLanguage(k, v));
 marked.setOptions({ gfm: true, breaks: true });
@@ -115,7 +116,7 @@ async function runAssistant(c) {
   bub.innerHTML = '<span class="thinking">pensando<span class="dots"></span></span>';
   row.appendChild(bub); box.appendChild(row); box.scrollTop = box.scrollHeight;
 
-  const history = c.messages.slice(-24).map(({ role, content }) => ({ role, content }));
+  const history = c.messages.filter((m) => !m.error).slice(-24).map(({ role, content }) => ({ role, content }));
   const messages = [{ role: 'system', content: settings.persona }, ...history];
   let text = '', provider = '', raf = 0;
   const paint = () => { raf = 0; bub.innerHTML = ''; bub.appendChild(renderMarkdown(text)); const near = box.scrollHeight - box.scrollTop - box.clientHeight < 160; if (near) box.scrollTop = box.scrollHeight; };
@@ -123,15 +124,13 @@ async function runAssistant(c) {
   try {
     const r = await llmChat(messages, {
       signal: busy.signal,
-      onProvider: (p) => { provider = p; document.getElementById('backendPill').textContent = PROVIDER_NAMES[p]; },
-      onLoad: (f, t) => { bub.innerHTML = `<span class="thinking">Carregando modelo offline ${Math.round(f * 100)}%…</span><div class="hint">${t}</div>`; },
+      onProvider: (p) => { provider = p;  },
       onToken: (t) => { text += t; if (!raf) raf = requestAnimationFrame(paint); },
     });
     provider = r.provider;
   } catch (e) {
     if (e.name !== 'AbortError') {
-      text = text || `⚠️ **Não consegui resposta agora.** Os serviços grátis da nuvem podem estar no limite. Tente de novo em alguns segundos, adicione uma chave grátis em Ajustes, ou ative o **modo offline** (ilimitado).\n\n<small>${(e.message || '').slice(0, 300)}</small>`;
-      provider = provider || '';
+      if (!text) { c.messages.push({ role: 'assistant', content: `⚠️ **Não consegui responder agora.** ${friendly(e)}\n\nToque em **↻ refazer** para tentar de novo.`, provider: '', error: true }); c.updated = Date.now(); persist(); renderMessages(); busy = null; setBusy(false); return; }
     }
   } finally { busy = null; setBusy(false); }
   if (!text) text = '_(cancelado)_';
@@ -172,14 +171,39 @@ let rec = null;
 function toggleMic() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const btn = $('#btnMic');
-  if (!SR) { toast('Seu navegador não tem reconhecimento de voz. Use o Chrome.'); return; }
+  if (!SR) return recordWhisper(btn);
   if (rec) { rec.stop(); return; }
   rec = new SR(); rec.lang = 'pt-BR'; rec.interimResults = true; rec.continuous = false;
   const base = $('#input').value ? $('#input').value + ' ' : '';
   rec.onresult = (e) => { let t = ''; for (const r of e.results) t += r[0].transcript; $('#input').value = base + t; autosize(); };
-  rec.onerror = (e) => toast('Microfone: ' + e.error);
+  rec.onerror = (e) => { if (e.error === 'network' || e.error === 'service-not-allowed') { rec = null; btn.classList.remove('rec'); recordWhisper(btn); } else if (e.error !== 'no-speech' && e.error !== 'aborted') toast('Microfone: ' + e.error); };
   rec.onend = () => { rec = null; btn.classList.remove('rec'); };
   rec.start(); btn.classList.add('rec');
+}
+
+// reserva: grava e transcreve no servidor (Whisper via Groq, grátis)
+let mr = null;
+async function recordWhisper(btn) {
+  if (mr) { mr.stop(); return; }
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return toast('Este navegador não permite gravar áudio.');
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch { return toast('Permita o microfone para falar.'); }
+  const chunks = [];
+  mr = new MediaRecorder(stream);
+  mr.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+  mr.onstop = async () => {
+    stream.getTracks().forEach((t) => t.stop()); btn.classList.remove('rec'); mr = null;
+    const blob = new Blob(chunks, { type: chunks[0]?.type || 'audio/webm' });
+    if (blob.size < 2000) return;
+    toast('Transcrevendo…');
+    try {
+      const fd = new FormData(); fd.append('file', blob, 'fala.webm'); fd.append('language', 'pt');
+      const r = await apiFetch('/api/stt', { method: 'POST', body: fd });
+      const { text } = await r.json();
+      const inp = $('#input'); inp.value = (inp.value ? inp.value + ' ' : '') + text; autosize(); inp.focus();
+    } catch (e) { toast('Transcrição: ' + friendly(e)); }
+  };
+  mr.start(); btn.classList.add('rec'); toast('Gravando… toque de novo para parar');
 }
 
 export function exportChats() { downloadBlob(new Blob([JSON.stringify(chats, null, 2)], { type: 'application/json' }), 'magames-ia-conversas.json'); }

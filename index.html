@@ -18,9 +18,11 @@
     <header class="topbar">
       <button class="icon-btn" id="btnMenu" aria-label="Conversas" title="Conversas">☰</button>
       <div class="brand"><img src="./icons/icon-192.png" alt="" /><span>MaGames <b>IA</b></span></div>
-      <span class="status-pill" id="backendPill" title="Motor de IA em uso">auto</span>
+      <span class="status-pill" id="backendPill" title="Servidor">…</span>
       <button class="icon-btn" id="btnInstall" hidden aria-label="Instalar app" title="Instalar app">⤓</button>
     </header>
+    <div id="serverBanner" class="banner" hidden></div>
+    <div id="updateBar" class="banner info" hidden>Nova versão disponível. <button class="btn small primary" id="btnUpdate">Atualizar agora</button></div>
 
     <main>
       <!-- CHAT -->
@@ -46,7 +48,7 @@
           <h2>Gerador de imagens</h2>
           <textarea id="imgPrompt" rows="3" placeholder="Descreva a imagem. Ex.: um caminhão vermelho numa estrada de Minas ao pôr do sol, estilo cinematográfico"></textarea>
           <div class="row wrap">
-            <label>Formato <select id="imgAspect"><option value="768x768">Quadrado 1:1</option><option value="768x432">Paisagem 16:9</option><option value="432x768">Vertical 9:16</option><option value="616x768">Retrato 4:5</option></select></label>
+            <label>Formato <select id="imgAspect"><option value="1024x1024">Quadrado 1:1</option><option value="1280x720">Paisagem 16:9</option><option value="720x1280">Vertical 9:16</option><option value="864x1080">Retrato 4:5</option></select></label>
             <label>Estilo <select id="imgStyle"><option value="">Livre</option><option value="photorealistic, cinematic lighting, 8k, highly detailed">Foto realista</option><option value="digital art, vibrant colors, trending on artstation">Arte digital</option><option value="anime style, studio ghibli inspired">Anime</option><option value="3d render, pixar style, soft lighting">3D / Pixar</option><option value="flat vector illustration, minimal, clean">Vetor / flat</option><option value="logo design, minimal, vector, white background">Logotipo</option></select></label>
             <label>Qtd. <select id="imgCount"><option>1</option><option>2</option><option>4</option></select></label>
           </div>
@@ -54,8 +56,9 @@
             <button class="btn ghost" id="btnEnhance">✨ Melhorar prompt</button>
             <button class="btn primary grow" id="btnGenImg">Gerar imagem</button>
           </div>
-          <p class="hint">Grátis via Pollinations.ai (nuvem). O serviço gratuito libera <b>1 imagem a cada ~45 s</b> por conexão — o app espera sozinho e avisa o tempo.</p>
+          <p class="hint">Grátis, gerado no servidor MaGames. Se os geradores grátis estiverem ocupados, o app espera e avisa. Toque na imagem para ampliar.</p>
           <div class="gallery" id="gallery"></div>
+          <p class="hint" id="galleryEmpty">Suas imagens aparecem aqui e ficam salvas neste aparelho.</p>
           <button class="btn ghost small" id="btnClearGallery">Limpar galeria</button>
         </div>
       </section>
@@ -64,41 +67,44 @@
       <section class="view" id="view-voice">
         <div class="pane">
           <h2>Estúdio de voz</h2>
-          <textarea id="ttsText" rows="7" placeholder="Cole ou escreva o texto para virar áudio natural em português…"></textarea>
+          <textarea id="ttsText" rows="7" maxlength="12000" placeholder="Cole ou escreva o texto para virar áudio natural em português…"></textarea>
+          <p class="hint right" id="ttsCount">0 / 12000</p>
           <div class="row wrap">
             <label class="grow">Voz <select id="ttsVoice"></select></label>
-            <label>Velocidade <select id="ttsRate"><option value="0.85">0.85×</option><option value="1" selected>1×</option><option value="1.15">1.15×</option><option value="1.3">1.3×</option></select></label>
+            <label>Velocidade <select id="ttsRate"><option value="0.85">0,85×</option><option value="1" selected>1×</option><option value="1.15">1,15×</option><option value="1.3">1,3×</option></select></label>
           </div>
           <div class="row">
+            <button class="btn ghost" id="btnPreviewVoice">▶ Ouvir prévia</button>
             <button class="btn primary grow" id="btnTts">🔊 Gerar áudio</button>
-            <button class="btn ghost" id="btnTtsStop">■ Parar</button>
+            <button class="btn ghost" id="btnTtsStop">■</button>
           </div>
           <div class="progress" id="ttsProgress" hidden><div></div><span></span></div>
           <div id="ttsResult"></div>
-          <p class="hint">As vozes <b>Piper</b> (neurais) rodam no seu aparelho, sem limite: baixam uma vez (~20–60 MB) e depois funcionam offline. As vozes do sistema dependem do seu celular e não podem ser baixadas como arquivo.</p>
+          <p class="hint">Vozes neurais naturais (Microsoft), geradas no servidor em segundos. Nada para baixar no celular. Baixe o MP3 para usar em vídeos.</p>
         </div>
       </section>
 
       <!-- VÍDEO -->
       <section class="view" id="view-video">
         <div class="pane">
-          <h2>Estúdio de vídeos longos</h2>
+          <h2>Estúdio de vídeos</h2>
           <textarea id="vidTopic" rows="3" placeholder="Tema do vídeo. Ex.: A história dos caminhões no Brasil, curiosidades para o YouTube"></textarea>
           <div class="row wrap">
             <label>Duração <select id="vidMinutes"><option value="1">1 min</option><option value="2" selected>2 min</option><option value="3">3 min</option><option value="5">5 min</option><option value="7">7 min</option><option value="10">10 min</option></select></label>
             <label>Formato <select id="vidFormat"><option value="16:9">16:9 YouTube</option><option value="9:16">9:16 Shorts/Reels</option></select></label>
-            <label>Qualidade <select id="vidRes"><option value="720">720p</option><option value="480">480p (mais rápido)</option></select></label>
+            <label>Qualidade <select id="vidRes"><option value="720">720p HD</option><option value="480">480p (mais rápido)</option></select></label>
+            <label>Tom <select id="vidTone"><option value="envolvente e curioso">Curiosidades</option><option value="educativo e claro">Educativo</option><option value="dramático, de suspense">Suspense / história</option><option value="motivacional e enérgico">Motivacional</option><option value="divertido e descontraído">Divertido</option></select></label>
           </div>
           <div class="row wrap">
-            <label>Estilo visual <select id="vidStyle"><option value="cinematic photo, dramatic lighting, highly detailed">Cinematográfico</option><option value="documentary photography, natural light, realistic">Documentário</option><option value="digital painting, vibrant, epic">Pintura digital</option><option value="anime style, vibrant colors">Anime</option><option value="3d render, pixar style">3D animação</option></select></label>
-            <label>Tom <select id="vidTone"><option value="envolvente e curioso">Curiosidades</option><option value="educativo e claro">Educativo</option><option value="dramático, de suspense">Suspense / história</option><option value="motivacional e enérgico">Motivacional</option><option value="divertido e descontraído">Divertido</option></select></label>
-            <label>Voz <select id="vidVoice"></select></label>
-            <label>Imagens <select id="vidImgSrc"><option value="auto">Automático (IA se tiver chave, senão fotos reais)</option><option value="foto">Fotos reais grátis (Wikimedia)</option><option value="ai">Imagens IA (precisa chave Pollinations)</option></select></label>
+            <label class="grow">Narração <select id="vidVoice"></select></label>
+            <button class="btn ghost small" id="btnPreviewVidVoice" type="button">▶ prévia</button>
+            <label>Imagens <select id="vidImgSrc"><option value="ia">Imagens IA (reserva: fotos reais)</option><option value="foto">Fotos reais grátis</option></select></label>
+          </div>
+          <div class="row wrap">
             <label class="check"><input type="checkbox" id="vidSubs" checked /> Legendas</label>
+            <label class="check"><input type="checkbox" id="vidMusic" /> Trilha de fundo suave</label>
           </div>
-          <div class="row">
-            <button class="btn primary grow" id="btnScript">1. Gerar roteiro</button>
-          </div>
+          <div class="row"><button class="btn primary grow" id="btnScript">1. Gerar roteiro</button></div>
           <div id="scriptBox" hidden>
             <label>Título <input id="vidTitle" /></label>
             <div id="scenes"></div>
@@ -109,9 +115,9 @@
           </div>
           <div class="progress" id="vidProgress" hidden><div></div><span></span></div>
           <pre class="log" id="vidLog" hidden></pre>
-          <div class="row"><button class="btn ghost" id="btnCancelVid" hidden>Cancelar</button></div>
+          <div class="row"><button class="btn ghost" id="btnCancelVid" hidden>Cancelar vídeo</button></div>
           <div id="vidResult"></div>
-          <p class="hint">Tudo é montado no seu aparelho (ffmpeg.wasm). Deixe a tela ligada e o app aberto durante a criação. Celular: prefira 480p e até 5 min. O roteiro vem da IA na nuvem; as imagens são fotos reais de licença livre (Wikimedia Commons) ou IA com sua chave Pollinations; a narração é gerada no aparelho.</p>
+          <p class="hint">O vídeo é montado no servidor (não pesa no celular): roteiro por IA, narração neural, imagem por cena com movimento, transições e legendas. Servidor grátis = sem pressa: conte ~3–4 min de espera por minuto de vídeo em 720p (480p é mais rápido). Pode deixar a tela desligar; mantenha o app aberto.</p>
         </div>
       </section>
 
@@ -119,71 +125,27 @@
       <section class="view" id="view-settings">
         <div class="pane">
           <h2>Ajustes</h2>
-          <h3>Motor do chat</h3>
-          <label>Preferência <select id="setBackend">
-            <option value="auto">Automático (suas chaves → nuvem grátis → offline)</option>
-            <option value="llm7">LLM7 (grátis, sem chave)</option>
-            <option value="groq">Groq (sua chave grátis)</option>
-            <option value="gemini">Google Gemini (sua chave grátis)</option>
-            <option value="openrouter">OpenRouter :free (sua chave grátis)</option>
-            <option value="offline">Offline no aparelho (ilimitado)</option>
-          </select></label>
-          <details class="card">
-            <summary>Chaves grátis opcionais (ficam só neste aparelho)</summary>
-            <p class="hint"><b>Recomendado:</b> com uma chave grátis do Gemini ou do Groq as respostas ficam muito melhores e mais rápidas. Nenhuma é obrigatória e todas têm plano gratuito sem cartão. As chaves ficam salvas apenas no seu navegador e vão direto para o provedor.</p>
-            <label>Groq — <a href="https://console.groq.com/keys" target="_blank" rel="noopener">pegar chave</a><input id="keyGroq" type="password" autocomplete="off" placeholder="gsk_…" /></label>
-            <label>Modelo Groq <input id="modelGroq" placeholder="llama-3.3-70b-versatile" /></label>
-            <label>Google Gemini — <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">pegar chave</a><input id="keyGemini" type="password" autocomplete="off" placeholder="AIza…" /></label>
-            <label>Modelo Gemini <input id="modelGemini" placeholder="gemini-2.5-flash" /></label>
-            <label>OpenRouter — <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">pegar chave</a><input id="keyOpenrouter" type="password" autocomplete="off" placeholder="sk-or-…" /></label>
-            <label>Modelo OpenRouter (termina em :free) <input id="modelOpenrouter" placeholder="meta-llama/llama-3.3-70b-instruct:free" /></label>
-            <label>LLM7 (opcional, aumenta a cota) — <a href="https://dash.llm7.io/" target="_blank" rel="noopener">pegar chave</a><input id="keyLlm7" type="password" autocomplete="off" placeholder="chave LLM7" /></label>
-            <label>Modelo LLM7 (default, fast ou pro) <input id="modelLlm7" placeholder="default" /></label>
-            <label>Pollinations (imagens IA sem espera e dentro dos vídeos) — <a href="https://enter.pollinations.ai" target="_blank" rel="noopener">criar conta grátis</a><input id="keyPollinations" type="password" autocomplete="off" placeholder="sk_…" /></label>
-            <p class="hint">A Pollinations dá “Quest Pollen” grátis para contas; use uma chave secreta <b>sk_</b> com orçamento baixo. Sem chave, as imagens continuam grátis (1 a cada ~45 s), mas não entram nos vídeos.</p>
-            <button class="btn small" id="btnSaveKeys">Salvar chaves</button>
-          </details>
-
-          <h3>Modo offline (ilimitado)</h3>
-          <div class="card">
-            <p id="gpuStatus" class="hint">Verificando WebGPU…</p>
-            <label>Modelo <select id="setOfflineModel">
-              <option value="Qwen2.5-1.5B-Instruct-q4f16_1-MLC">Qwen 2.5 1.5B (~1 GB, melhor em português)</option>
-              <option value="Llama-3.2-1B-Instruct-q4f16_1-MLC">Llama 3.2 1B (~0,9 GB)</option>
-              <option value="Qwen2.5-0.5B-Instruct-q4f16_1-MLC">Qwen 2.5 0.5B (~0,4 GB, celulares fracos)</option>
-            </select></label>
-            <div class="row"><button class="btn primary grow" id="btnDlModel">Baixar e ativar</button><button class="btn ghost" id="btnDelModel">Apagar</button></div>
-            <div class="progress" id="modelProgress" hidden><div></div><span></span></div>
-            <p class="hint">Precisa de Chrome/Edge com WebGPU (Android 12+ com GPU recente, ou PC). Baixa uma vez e roda 100% no aparelho: sem internet, sem limite, privado. É mais simples que os modelos da nuvem.</p>
-          </div>
-
-          <h3>Vozes neurais (Piper)</h3>
-          <div class="card">
-            <p class="hint" id="piperStored">—</p>
-            <div class="row"><button class="btn small" id="btnDlVoice">Baixar voz Faber (pt-BR)</button><button class="btn ghost small" id="btnDelVoices">Apagar vozes</button></div>
-          </div>
-
-          <h3>Personalidade</h3>
+          <h3>Voz padrão (ouvir respostas)</h3>
+          <select id="setVoice"></select>
+          <h3>Personalidade da IA</h3>
           <textarea id="setPersona" rows="5"></textarea>
           <div class="row"><button class="btn small" id="btnSavePersona">Salvar</button><button class="btn ghost small" id="btnResetPersona">Padrão</button></div>
-
           <h3>Aparência</h3>
           <label>Tema <select id="setTheme"><option value="dark">Escuro</option><option value="light">Claro</option><option value="auto">Automático</option></select></label>
-
           <h3>Dados</h3>
           <div class="row"><button class="btn ghost small" id="btnExport">Exportar conversas</button><button class="btn danger small" id="btnWipe">Apagar tudo</button></div>
-
-          <h3>Sobre e limites (sendo honesto)</h3>
+          <h3>Sobre</h3>
           <div class="card about">
-            <p><b>MaGames IA</b> é grátis e sem login. Ele junta serviços gratuitos da nuvem com IA que roda no seu próprio aparelho.</p>
+            <p><b>MaGames IA</b> é grátis e sem login. Usa um servidor próprio que conecta motores de IA gratuitos:</p>
             <ul>
-              <li><b>Chat na nuvem sem chave</b> (LLM7): grátis, com cota diária por conexão; a qualidade varia. Com sua chave grátis do Gemini/Groq fica bem melhor. Quando um motor falha, o app tenta o próximo sozinho.</li>
-              <li><b>Imagens IA</b> (Pollinations): grátis, mas o serviço libera <b>1 imagem a cada ~45 s</b> por conexão. Sem chave, os navegadores só podem exibir essas imagens (não editar), então os vídeos usam fotos reais da Wikimedia Commons (licenças livres) — ou imagens IA se você colocar uma chave Pollinations.</li>
-              <li><b>Offline</b> (WebLLM) e <b>vozes Piper</b>: rodam no aparelho, <b>sem limite</b>, mas exigem baixar os modelos e um aparelho razoável.</li>
-              <li><b>Vídeos</b>: montados no aparelho. Um vídeo de 10 min pode levar bastante tempo em celular.</li>
-              <li>Suas conversas e chaves ficam só neste navegador.</li>
+              <li><b>Chat</b>: Google Gemini, com Groq e LLM7 de reserva automática.</li>
+              <li><b>Imagens</b>: geradores grátis no servidor (se estiverem ocupados, o app espera e avisa).</li>
+              <li><b>Voz</b>: vozes neurais naturais em português, em MP3.</li>
+              <li><b>Vídeo</b>: montado no servidor, com narração, imagens, movimento e legendas.</li>
+              <li>O servidor grátis dorme quando ninguém usa; ao abrir, pode levar ~50 s para acordar.</li>
+              <li>Conversas e imagens ficam só neste aparelho.</li>
             </ul>
-            <p class="hint">MaGames Tecnologia · v1.0</p>
+            <p class="hint">MaGames Tecnologia · v<span id="appVersion"></span></p>
           </div>
         </div>
       </section>

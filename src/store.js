@@ -3,14 +3,10 @@ const KEY = 'mgia.settings';
 export const DEFAULT_PERSONA = `Você é a MaGames IA, assistente da MaGames Tecnologia. Responda sempre em português do Brasil, de forma direta, inteligente e útil, com um toque de humor quando couber. Use markdown (listas, negrito, tabelas e blocos de código com a linguagem indicada) quando ajudar. Para código, entregue soluções completas e funcionais. Se não souber algo ou se a informação puder estar desatualizada, diga com honestidade.`;
 
 const DEFAULTS = {
-  backend: 'auto',
-  keys: { groq: '', gemini: '', openrouter: '', llm7: '', pollinations: '' },
-  models: { pollinationsImage: 'flux', llm7: 'default', groq: 'llama-3.3-70b-versatile', gemini: 'gemini-2.5-flash', openrouter: 'meta-llama/llama-3.3-70b-instruct:free' },
-  offlineModel: 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC',
-  offlineReady: false,
   persona: DEFAULT_PERSONA,
   theme: 'dark',
-  voice: 'piper:pt_BR-faber-medium',
+  voice: 'pt-BR-FranciscaNeural',
+  videoVoice: 'pt-BR-AntonioNeural',
 };
 
 function merge(a, b) {
@@ -20,6 +16,7 @@ function merge(a, b) {
 }
 
 export const settings = merge(DEFAULTS, safeParse(localStorage.getItem(KEY), {}));
+if (String(settings.voice).includes(':')) settings.voice = DEFAULTS.voice; // migração v1 (Piper/sistema)
 export function saveSettings() { localStorage.setItem(KEY, JSON.stringify(settings)); }
 
 export function safeParse(s, fb) { try { return s ? JSON.parse(s) : fb; } catch { return fb; } }

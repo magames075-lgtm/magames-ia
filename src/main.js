@@ -1,13 +1,13 @@
 import './style.css';
-import { settings, saveSettings, toast, setProgress, DEFAULT_PERSONA } from './store.js';
+import { settings, saveSettings, toast, setProgress, DEFAULT_PERSONA, downloadBlob } from './store.js';
 import { initChat, exportChats, wipeChats } from './chat.js';
 import { initImages } from './images.js';
 import { initVideo } from './video.js';
-import { PIPER_VOICES, systemVoices, synthPiper, speakSystem, stopSystem, piperStored, piperFlush, piperSession } from './voice.js';
-import { hasWebGPU, loadOffline, deleteOffline, offlineCached, PROVIDER_NAMES } from './llm.js';
-import { downloadBlob } from './store.js';
+import { getVoices, ttsBlob, stopQuick } from './voice.js';
+import { wake, onServerState, startKeepAlive, friendly } from './api.js';
 
 const $ = (s) => document.querySelector(s);
+const APP_VERSION = '2.0.0';
 
 // ---------- tema ----------
 function applyTheme() {
@@ -27,122 +27,109 @@ function show(view) {
 }
 document.querySelectorAll('.tabbar button').forEach((b) => (b.onclick = () => show(b.dataset.view)));
 
-// ---------- vozes ----------
-function fillVoices() {
-  const sys = systemVoices();
-  for (const sel of [$('#ttsVoice'), $('#vidVoice')]) {
-    const isVid = sel.id === 'vidVoice';
-    const prev = sel.value || (isVid ? 'pt_BR-faber-medium' : settings.voice);
+// ---------- estado do servidor ----------
+const banner = $('#serverBanner');
+onServerState((s) => {
+  const pill = $('#backendPill');
+  if (s === 'waking') { banner.hidden = false; banner.className = 'banner warn'; banner.innerHTML = '<span class="spinner"></span> Acordando o servidor grátis… (até ~50 s na primeira vez)'; pill.textContent = 'acordando'; }
+  else if (s === 'down') { banner.hidden = false; banner.className = 'banner err'; banner.innerHTML = 'Servidor fora do ar ou sem internet. <button id="btnRetryWake" class="btn small">Tentar de novo</button>'; $('#btnRetryWake').onclick = () => wake().catch(() => {}); pill.textContent = 'offline'; }
+  else if (s === 'ok') { banner.hidden = true; pill.textContent = 'online'; pill.classList.add('ok'); }
+});
+wake().catch(() => {});
+startKeepAlive();
+
+// ---------- voz ----------
+let VOICES = [];
+async function fillVoices() {
+  VOICES = await getVoices();
+  for (const sel of [$('#ttsVoice'), $('#vidVoice'), $('#setVoice')]) {
+    const prev = sel.id === 'vidVoice' ? (settings.videoVoice || 'pt-BR-AntonioNeural') : settings.voice;
     sel.innerHTML = '';
-    PIPER_VOICES.forEach((v) => sel.add(new Option(v.label, isVid ? v.id : 'piper:' + v.id)));
-    if (!isVid) sys.forEach((v) => sel.add(new Option(`${v.name} (sistema, ${v.lang})`, 'sys:' + v.name)));
+    VOICES.forEach((v) => sel.add(new Option(`${v.name} — ${v.desc}`, v.id)));
     if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
   }
 }
 fillVoices();
-if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = fillVoices;
+$('#ttsVoice').onchange = () => { settings.voice = $('#ttsVoice').value; $('#setVoice').value = settings.voice; saveSettings(); };
+$('#setVoice').onchange = () => { settings.voice = $('#setVoice').value; $('#ttsVoice').value = settings.voice; saveSettings(); };
+$('#vidVoice').onchange = () => { settings.videoVoice = $('#vidVoice').value; saveSettings(); };
+$('#ttsText').oninput = () => { $('#ttsCount').textContent = $('#ttsText').value.length + ' / 12000'; };
+
+let preview = null;
+async function playPreview(voice, btn) {
+  stopQuick(); preview?.pause();
+  const old = btn.textContent; btn.disabled = true; btn.textContent = '…';
+  try {
+    const b = await ttsBlob('Olá! Eu sou uma voz da MaGames IA. Posso narrar seus vídeos, textos e histórias.', voice);
+    preview = new Audio(URL.createObjectURL(b)); await preview.play();
+  } catch (e) { toast('Prévia: ' + friendly(e)); }
+  finally { btn.disabled = false; btn.textContent = old; }
+}
+$('#btnPreviewVoice').onclick = (e) => playPreview($('#ttsVoice').value, e.currentTarget);
+$('#btnPreviewVidVoice').onclick = (e) => playPreview($('#vidVoice').value, e.currentTarget);
 
 let ttsAbort = null;
-$('#ttsVoice').onchange = () => { settings.voice = $('#ttsVoice').value; saveSettings(); };
 $('#btnTts').onclick = async () => {
   const text = $('#ttsText').value.trim();
   if (!text) return toast('Escreva um texto primeiro');
-  const v = $('#ttsVoice').value, rate = Number($('#ttsRate').value);
   const prog = $('#ttsProgress'), out = $('#ttsResult');
   const btn = $('#btnTts'); btn.disabled = true; out.innerHTML = '';
   ttsAbort = new AbortController();
+  setProgress(prog, 0.3, 'Gerando voz neural no servidor…');
   try {
-    if (v.startsWith('piper:')) {
-      setProgress(prog, 0, 'Preparando voz neural…');
-      const r = await synthPiper(text, v.slice(6), { signal: ttsAbort.signal, onProgress: (f, t) => setProgress(prog, f, t) });
-      const a = document.createElement('audio'); a.controls = true; a.src = URL.createObjectURL(r.blob);
-      a.playbackRate = rate; a.preservesPitch = true; a.onloadedmetadata = () => (a.playbackRate = rate);
-      const b = document.createElement('button'); b.className = 'btn primary'; b.textContent = `⬇ Baixar áudio WAV (${Math.round(r.duration)} s)`;
-      b.onclick = () => downloadBlob(r.blob, 'magames-ia-voz.wav');
-      out.append(a, b); a.play().catch(() => {});
-      setProgress(prog, 1, 'Pronto ✓');
-    } else {
-      prog.hidden = true;
-      await speakSystem(text, v.slice(4), rate);
-    }
+    const voice = $('#ttsVoice').value;
+    const blob = await ttsBlob(text, voice, Number($('#ttsRate').value), { signal: ttsAbort.signal });
+    const a = document.createElement('audio'); a.controls = true; a.src = URL.createObjectURL(blob);
+    const b = document.createElement('button'); b.className = 'btn primary'; b.textContent = `⬇ Baixar MP3 (${Math.round(blob.size / 1024)} KB)`;
+    b.onclick = () => downloadBlob(blob, 'magames-ia-voz.mp3');
+    out.append(a, b); a.play().catch(() => {});
+    setProgress(prog, 1, 'Pronto ✓');
   } catch (e) {
-    if (e.name !== 'AbortError') {
-      console.warn(e); toast('Voz neural falhou; usando a voz do sistema.');
-      prog.hidden = true;
-      try { await speakSystem(text, '', rate); } catch (e2) { toast('Sem voz disponível: ' + e2.message); }
-    }
+    if (e.name !== 'AbortError') { setProgress(prog, 0, 'Erro: ' + friendly(e)); toast('Voz: ' + friendly(e), 6000); }
   } finally { btn.disabled = false; ttsAbort = null; }
 };
-$('#btnTtsStop').onclick = () => { ttsAbort?.abort(); stopSystem(); document.querySelectorAll('#ttsResult audio').forEach((a) => a.pause()); };
+$('#btnTtsStop').onclick = () => { ttsAbort?.abort(); stopQuick(); preview?.pause(); document.querySelectorAll('#ttsResult audio').forEach((a) => a.pause()); };
 
 // ---------- ajustes ----------
-function refreshPill() { $('#backendPill').textContent = settings.backend === 'auto' ? 'auto' : PROVIDER_NAMES[settings.backend]; }
-$('#setBackend').value = settings.backend;
-$('#setBackend').onchange = () => { settings.backend = $('#setBackend').value; saveSettings(); refreshPill(); if (settings.backend === 'offline' && !settings.offlineReady) toast('Baixe o modelo offline abaixo para usar este modo.'); };
-refreshPill();
-const keyFields = { keyGroq: ['keys', 'groq'], keyGemini: ['keys', 'gemini'], keyOpenrouter: ['keys', 'openrouter'], modelGroq: ['models', 'groq'], modelGemini: ['models', 'gemini'], modelOpenrouter: ['models', 'openrouter'], keyLlm7: ['keys', 'llm7'], modelLlm7: ['models', 'llm7'], keyPollinations: ['keys', 'pollinations'] };
-for (const [id, [a, b]] of Object.entries(keyFields)) $('#' + id).value = settings[a][b] || '';
-$('#btnSaveKeys').onclick = () => { for (const [id, [a, b]] of Object.entries(keyFields)) settings[a][b] = $('#' + id).value.trim(); saveSettings(); toast('Chaves salvas só neste aparelho ✓'); };
-
 $('#setPersona').value = settings.persona;
 $('#btnSavePersona').onclick = () => { settings.persona = $('#setPersona').value.trim() || DEFAULT_PERSONA; saveSettings(); toast('Personalidade salva'); };
 $('#btnResetPersona').onclick = () => { settings.persona = DEFAULT_PERSONA; $('#setPersona').value = DEFAULT_PERSONA; saveSettings(); };
 $('#setTheme').value = settings.theme;
 $('#setTheme').onchange = () => { settings.theme = $('#setTheme').value; saveSettings(); applyTheme(); };
 matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', applyTheme);
-
 $('#btnExport').onclick = exportChats;
 $('#btnWipe').onclick = async () => {
-  if (!confirm('Apagar conversas, galeria, chaves e ajustes deste aparelho?')) return;
+  if (!confirm('Apagar conversas, galeria e ajustes deste aparelho?')) return;
   wipeChats(); Object.keys(localStorage).filter((k) => k.startsWith('mgia.')).forEach((k) => localStorage.removeItem(k));
+  try { indexedDB.deleteDatabase('mgia'); } catch {}
   toast('Tudo apagado'); setTimeout(() => location.reload(), 800);
 };
+$('#appVersion').textContent = APP_VERSION;
 
-// offline
-$('#setOfflineModel').value = settings.offlineModel;
-$('#setOfflineModel').onchange = () => { settings.offlineModel = $('#setOfflineModel').value; settings.offlineReady = false; saveSettings(); checkOffline(); };
-async function checkOffline() {
-  const el = $('#gpuStatus');
-  if (!hasWebGPU()) { el.innerHTML = '⚠️ Este navegador <b>não tem WebGPU</b>, então o modo offline não roda aqui. O chat continua pela nuvem grátis.'; $('#btnDlModel').disabled = true; return; }
-  let info = '';
-  try { const ad = await navigator.gpu.requestAdapter(); info = ad ? '✅ WebGPU disponível.' : '⚠️ WebGPU existe, mas nenhuma GPU compatível foi encontrada.'; } catch { info = '⚠️ WebGPU indisponível.'; }
-  const cached = await offlineCached();
-  if (cached && !settings.offlineReady) { settings.offlineReady = true; saveSettings(); }
-  el.textContent = info + (cached ? ' Modelo baixado e pronto (ilimitado).' : ' Modelo ainda não baixado.');
-}
-$('#btnDlModel').onclick = async () => {
-  const prog = $('#modelProgress'), b = $('#btnDlModel'); b.disabled = true;
-  try {
-    await loadOffline((f, t) => setProgress(prog, f, t.length > 60 ? Math.round(f * 100) + '% — ' + t.slice(0, 48) + '…' : t));
-    setProgress(prog, 1, 'Pronto! Modo offline ativo ✓');
-    if (settings.backend === 'auto') toast('Modelo pronto. Escolha “Offline” no motor para usar sempre sem internet.');
-    checkOffline();
-  } catch (e) { setProgress(prog, 0, 'Erro: ' + e.message); toast(e.message); }
-  finally { b.disabled = false; }
-};
-$('#btnDelModel').onclick = async () => { if (!confirm('Apagar o modelo offline deste aparelho?')) return; try { await deleteOffline(); toast('Modelo apagado'); } catch (e) { toast(e.message); } checkOffline(); };
-
-// piper
-async function checkPiper() { const s = await piperStored(); $('#piperStored').textContent = s.length ? 'Vozes salvas no aparelho: ' + s.join(', ') : 'Nenhuma voz neural baixada ainda (baixa sozinha no primeiro uso).'; }
-$('#btnDlVoice').onclick = async () => {
-  const b = $('#btnDlVoice'); b.disabled = true;
-  try { await piperSession('pt_BR-faber-medium', (f, t) => (b.textContent = t)); toast('Voz Faber pronta ✓'); } catch (e) { toast('Falhou: ' + e.message); }
-  finally { b.disabled = false; b.textContent = 'Baixar voz Faber (pt-BR)'; checkPiper(); }
-};
-$('#btnDelVoices').onclick = async () => { await piperFlush(); toast('Vozes apagadas'); checkPiper(); };
-
-// ---------- PWA ----------
+// ---------- PWA + atualização ----------
 let deferred = null;
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferred = e; $('#btnInstall').hidden = false; });
 $('#btnInstall').onclick = async () => { if (!deferred) return; deferred.prompt(); await deferred.userChoice; deferred = null; $('#btnInstall').hidden = true; };
-if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('./sw.js').catch(() => {});
-if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('./sw.js').then((reg) => {
+    const ask = (w) => {
+      const bar = $('#updateBar'); bar.hidden = false;
+      $('#btnUpdate').onclick = () => w.postMessage('skipWaiting');
+    };
+    if (reg.waiting && navigator.serviceWorker.controller) ask(reg.waiting);
+    reg.addEventListener('updatefound', () => {
+      const w = reg.installing;
+      w?.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) ask(w); });
+    });
+    setInterval(() => reg.update().catch(() => {}), 30 * 60000);
+  }).catch(() => {});
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
+}
 
 window.addEventListener('hashchange', () => show(location.hash.slice(1)));
 initChat();
 initImages();
 initVideo();
 show((location.hash || '#chat').slice(1).replace(/[^a-z]/g, '') || 'chat');
-checkOffline();
-checkPiper();
-window.__mgia = { ready: true };
+window.__mgia = { ready: true, version: APP_VERSION };
