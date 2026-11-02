@@ -1,0 +1,18 @@
+{
+  "name": "MaGames IA",
+  "short_name": "MaGames IA",
+  "description": "Super app de IA grátis: chat, imagens, voz natural e vídeos longos. Feito pela MaGames Tecnologia.",
+  "lang": "pt-BR",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b0a18",
+  "theme_color": "#0b0a18",
+  "categories": ["productivity", "utilities", "entertainment"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
