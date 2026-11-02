@@ -68,7 +68,11 @@ async function poll(id) {
       const j = await apiJSON('/api/video/' + id);
       fails = 0;
       if (j.status === 'queued') setProgress(prog, 0.01, `Na fila (posição ${j.position})…`);
-      else setProgress(prog, j.progress, `${Math.round(j.progress * 100)}% — ${j.stage} · ${Math.floor((Date.now() - t0) / 60000)} min`);
+      else {
+        const el = (Date.now() - t0) / 1000;
+        const eta = j.progress > 0.08 ? Math.max(0, Math.round((el * (1 - j.progress)) / j.progress / 60)) : null;
+        setProgress(prog, j.progress, `${Math.round(j.progress * 100)}% — ${j.stage} · ${Math.floor(el / 60)} min` + (eta !== null ? ` · falta ~${eta || '<1'} min` : ''));
+      }
       log.hidden = false; log.textContent = (j.log || []).slice(-8).join('\n');
       if (j.status === 'done') { setProgress(prog, 1, 'Vídeo pronto ✓'); showResult(j); toast('Vídeo pronto!'); break; }
       if (j.status === 'error') { setProgress(prog, 0, 'Erro: ' + j.error); toast('O vídeo falhou: ' + j.error, 8000); break; }
