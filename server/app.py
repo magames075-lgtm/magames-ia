@@ -155,6 +155,8 @@ def _text_only(msgs):
 async def stream_provider(name, url, key, model, messages, temperature):
     """Gera pedaços de texto. Lança exceção se falhar antes de produzir algo."""
     body = {"model": model, "messages": messages, "stream": True, "temperature": temperature}
+    if name == "gemini":
+        body["reasoning_effort"] = "low"
     if name == "groq" and "gpt-oss" in model:
         body["reasoning_effort"] = "low"
         body["include_reasoning"] = False
@@ -203,9 +205,24 @@ async def chat_stream(messages, temperature=0.7, prefer=None):
         for attempt in range(2):
             try:
                 yield ("provider", name)
-                async for t in stream_provider(name, url, key, MODEL_OVERRIDE.get(name, model), msgs, temperature):
-                    got = True
-                    yield ("t", t)
+                agen = stream_provider(name, url, key, MODEL_OVERRIDE.get(name, model), msgs, temperature)
+                try:
+                    while True:
+                        try:
+                            t = await asyncio.wait_for(agen.__anext__(), 25 if not got else 40)
+                        except StopAsyncIteration:
+                            break
+                        except asyncio.TimeoutError:
+                            te = RuntimeError(f"{name}: sem resposta em 25 s")
+                            te.status = 504
+                            raise te
+                        got = True
+                        yield ("t", t)
+                finally:
+                    try:
+                        await agen.aclose()
+                    except Exception:
+                        pass
                 if got:
                     return
                 raise RuntimeError(f"{name}: resposta vazia")
@@ -227,7 +244,10 @@ async def chat_stream(messages, temperature=0.7, prefer=None):
                 if st in (401, 403):
                     mark_down(name, 600)
                     break
-                if st in (500, 502, 503, 504) and attempt == 0:
+                if st in (503, 504):
+                    mark_down(name, 90)  # sobrecarregado/lento: usa o próximo motor por 90 s
+                    break
+                if st in (500, 502) and attempt == 0:
                     await asyncio.sleep(1.5)
                     continue
                 break

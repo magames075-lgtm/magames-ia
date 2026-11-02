@@ -83,7 +83,13 @@ export async function streamChat(payload, onEvent, signal) {
   const dec = new TextDecoder();
   let buf = '';
   for (;;) {
-    const { value, done } = await reader.read();
+    let timer;
+    const idle = new Promise((_, rej) => { timer = setTimeout(() => rej(new ApiError('A IA demorou demais para responder. Toque em tentar de novo.', 504)), 80000); });
+    let res;
+    try { res = await Promise.race([reader.read(), idle]); }
+    catch (e) { try { reader.cancel(); } catch {} throw e; }
+    finally { clearTimeout(timer); }
+    const { value, done } = res;
     if (done) break;
     buf += dec.decode(value, { stream: true });
     let i;
