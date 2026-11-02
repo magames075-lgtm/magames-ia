@@ -138,6 +138,7 @@ $('#btnInstall').onclick = async () => { if (!deferred) return; deferred.prompt(
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('./sw.js').catch(() => {});
 if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
 
+window.addEventListener('hashchange', () => show(location.hash.slice(1)));
 initChat();
 initImages();
 initVideo();
