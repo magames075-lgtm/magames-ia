@@ -26,7 +26,8 @@ import video as videomod
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 GROQ_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 POLL_KEY = os.environ.get("POLLINATIONS_KEY", "").strip()
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
+MODEL_OVERRIDE: dict[str, str] = {}
 GEMINI_IMAGE_MODEL = os.environ.get("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 VERSION = "2.0.0"
@@ -109,7 +110,7 @@ SYSTEM_DEFAULT = ("Você é a MaGames IA, uma assistente brilhante, útil e dire
 def providers_chain(prefer: str | None = None):
     chain = []
     if GEMINI_KEY:
-        chain.append(("gemini", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", GEMINI_KEY, GEMINI_MODEL))
+        chain.append(("gemini", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", GEMINI_KEY, MODEL_OVERRIDE.get("gemini", GEMINI_MODEL)))
     if GROQ_KEY:
         chain.append(("groq", "https://api.groq.com/openai/v1/chat/completions", GROQ_KEY, GROQ_MODEL))
     chain.append(("llm7", "https://api.llm7.io/v1/chat/completions", "", "default"))
@@ -202,7 +203,7 @@ async def chat_stream(messages, temperature=0.7, prefer=None):
         for attempt in range(2):
             try:
                 yield ("provider", name)
-                async for t in stream_provider(name, url, key, model, msgs, temperature):
+                async for t in stream_provider(name, url, key, MODEL_OVERRIDE.get(name, model), msgs, temperature):
                     got = True
                     yield ("t", t)
                 if got:
@@ -215,6 +216,11 @@ async def chat_stream(messages, temperature=0.7, prefer=None):
                     return
                 errors.append(str(e)[:200])
                 LAST_ERR[name] = time.strftime("%H:%M ") + str(e)[:200]
+                if st == 404 and name == "gemini" and attempt == 0:
+                    m = re.search(r"use models/([\w.\-]+)", str(e))
+                    MODEL_OVERRIDE["gemini"] = m.group(1) if m else "gemini-flash-latest"
+                    model = MODEL_OVERRIDE["gemini"]
+                    continue
                 if st == 429:
                     mark_down(name, 60 if attempt else 20)
                     break
@@ -363,7 +369,7 @@ async def stock_photo(query, w):
     raise RuntimeError("nenhuma foto livre encontrada")
 
 
-async def generate_image(prompt, w=1024, h=1024, seed=None, allow_stock=False, stock_query=None, max_wait=60):
+async def generate_image(prompt, w=1024, h=1024, seed=None, allow_stock=False, stock_query=None, max_wait=60, prefer_free=False):
     """Retorna (bytes, mime, provider). Lança RuntimeError com .retry quando só falta esperar."""
     seed = seed if seed is not None else random.randint(1, 10**9)
     errors, retry = [], 0
@@ -372,7 +378,11 @@ async def generate_image(prompt, w=1024, h=1024, seed=None, allow_stock=False, s
         steps.append(("gemini", lambda: img_gemini(prompt, w, h)))
     if POLL_KEY and not is_down("pollinations-key"):
         steps.append(("pollinations-key", lambda: img_pollinations_key(prompt, w, h, seed)))
-    steps.append(("pollinations", lambda: img_pollinations_anon(prompt, w, h, seed, max_wait)))
+    anon = ("pollinations", lambda: img_pollinations_anon(prompt, w, h, seed, max_wait))
+    if prefer_free:
+        steps.insert(0, anon)
+    else:
+        steps.append(anon)
     for name, fn in steps:
         try:
             b, mime = await fn()

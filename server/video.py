@@ -229,6 +229,9 @@ def _write_ass(path, W, H, bounds, text, dur, offset, title=None):
     fs = int(H * (0.055 if W > H else 0.042))
     mv = int(H * (0.08 if W > H else 0.2))
     events = []
+    toks = text.split() if text else []
+    if bounds and len(toks) == len(bounds):  # usa as palavras do roteiro (com pontuação)
+        bounds = [(b[0], b[1], toks[k]) for k, b in enumerate(bounds)]
     if bounds:
         chunks, cur = [], []
         for b in bounds:
@@ -264,6 +267,20 @@ def _write_ass(path, W, H, bounds, text, dur, offset, title=None):
         f.write("\n".join(lines) + "\n")
 
 
+async def _fetch_img(job, sc, W, H):
+    try:
+        if job["images"] == "foto":
+            from app import stock_photo  # noqa
+            b, _m = await stock_photo(sc["query"] or sc["image"], W)
+            return ("foto-livre", b)
+        b, _m, prov = await _image((sc["image"] or sc["narration"])[:800] + ", cinematic, highly detailed, no text",
+                                   W if W > H else 768, H if W > H else 1344, None, True, sc["query"] or sc["image"], 55, True)
+        return (prov, b)
+    except Exception as e:  # noqa
+        _log(job, f"imagem falhou: {str(e)[:150]}")
+        return None
+
+
 async def _render(job):
     W, H = ((1280, 720) if job["aspect"] == "16:9" else (720, 1280)) if job["res"] == 720 else ((854, 480) if job["aspect"] == "16:9" else (480, 854))
     d = os.path.join(ROOT, job["id"])
@@ -281,6 +298,7 @@ async def _render(job):
     _log(job, f"{n} cenas, {W}x{H}, voz {job['voice']}")
     clips, total = [], 0.0
     fps = 24
+    img_tasks = {}
     for i, sc in enumerate(scenes):
         base = 0.05 + 0.88 * i / n
         span = 0.88 / n
@@ -293,21 +311,13 @@ async def _render(job):
         adur = await _duration(job, ap)
         lead = 0.25
         dur = round(adur + lead + 0.45, 2)
-        # 2) imagem
+        # 2) imagem (pré-busca a próxima enquanto esta cena renderiza)
         _stage(job, base + span * 0.25, f"Cena {i+1}/{n}: criando imagem…")
         ip = os.path.join(d, f"i{i}.img")
-        got = None
-        try:
-            if job["images"] == "foto":
-                from app import stock_photo  # noqa
-                b, _m = await stock_photo(sc["query"] or sc["image"], W)
-                got = ("foto-livre", b)
-            else:
-                b, _m, prov = await _image((sc["image"] or sc["narration"])[:800] + ", cinematic, highly detailed, no text",
-                                           W if W > H else 768, H if W > H else 1344, None, True, sc["query"] or sc["image"], 50)
-                got = (prov, b)
-        except Exception as e:  # noqa
-            _log(job, f"imagem cena {i+1} falhou: {str(e)[:150]}")
+        for k in (i, i + 1):
+            if k < n and k not in img_tasks:
+                img_tasks[k] = asyncio.create_task(_fetch_img(job, scenes[k], W, H))
+        got = await img_tasks.pop(i)
         if job["cancel"]:
             raise RuntimeError("cancelado")
         pre = os.path.join(d, f"p{i}.jpg")
