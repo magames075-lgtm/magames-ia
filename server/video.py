@@ -387,7 +387,7 @@ async def _render(job):
         await _run(job, ["ffmpeg", "-y", "-loglevel", "error", "-loop", "1", "-framerate", str(fps), "-i", pre, "-i", ap,
                          "-filter_complex", f"[0:v]{','.join(vf)}[v];[1:a]adelay={int(lead*1000)}:all=1,apad,aresample=44100,afade=t=out:st={max(0, dur-0.35):.2f}:d=0.35[a]",
                          "-map", "[v]", "-map", "[a]", "-t", f"{dur:.2f}", "-r", str(fps),
-                         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "27", "-maxrate", "2500k", "-bufsize", "5000k", "-g", str(fps * 4),
+                         "-c:v", "libx264", "-preset", "superfast", "-crf", "28", "-maxrate", "2500k", "-bufsize", "5000k", "-g", str(fps * 4),
                          "-c:a", "aac", "-b:a", "128k", "-ac", "2", "-ar", "44100", "-threads", "2", cp], 1800, on_progress=prog)
         clips.append(cp)
         total += dur

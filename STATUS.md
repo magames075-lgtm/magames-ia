@@ -1,4 +1,4 @@
-# STATUS — MaGames IA v2 (02/11/2026, ~20:25 BRT)
+# STATUS — MaGames IA v2.1 (02/11/2026, ~21:30 BRT)
 
 - App: https://magames075-lgtm.github.io/magames-ia/ (GitHub Pages, deploy automático a cada push no `main`)
 - Backend: https://magames-ia-api.onrender.com (Render free, serviço `magames-ia-api`, srv-dbkh6k942hec73cjolj0, Docker de `server/`, região Oregon)
@@ -12,6 +12,13 @@
 | Voz (prévia, gerar, baixar MP3) | ✅ funciona | edge-tts (Francisca, Antônio, Thalita, multilíngues…). MP3 baixado (35 KB). Reserva: Google TTS. |
 | Vídeo (roteiro IA → render no servidor → tocar → baixar) | ✅ funciona | Vídeo de 54 s 720p com narração, legendas queimadas, Ken Burns, fades e título: render 220 s, MP4 2,6 MB baixado. |
 | Microfone no chat | ⚠️ não testado no aparelho | Web Speech do Chrome; se faltar, grava e transcreve no servidor (Whisper via Groq). |
+
+## Rodada da madrugada 1 (02/11 ~21:00–21:40 BRT)
+- Teste ao vivo como usuário (navegador): chat ✅ (streaming, lembra contexto, ~3–5 s via Groq), imagem ✅ (~15–20 s, JPG 203 KB baixado), voz ✅ (Francisca, toca e baixa MP3 34 KB).
+- Bug achado: botão "Atualizar agora" não sumia (SW novo não assumia). Corrigido em v2.1: o SW ativa sozinho (`skipWaiting` no install) e o botão recarrega após 2,5 s mesmo assim; registro com `updateViaCache: 'none'`. Isso também tira celulares presos no SW v1 (que servia tudo do cache).
+- Vídeo: parecia travado em "montando" por 1–2 min por cena (sem erro). Agora o ffmpeg informa progresso real ("Cena 1/3: montando 7/18 s…", barra anda) (teste API: vídeo 53 s 720p em 192 s, progresso contínuo, MP4 baixado). Preset `ultrafast` testado: só ~13% mais rápido e arquivo 2,5× maior (6,6 MB) → mantido `superfast` (melhor para dados móveis).
+- Chat: Gemini (`gemini-flash-latest`) segue devolvendo 503/lento; agora tenta outro modelo Gemini e, se nada vier em 12 s, cai para Groq e deixa Gemini 5 min em pausa.
+- Deploy do backend: o serviço Render ESTÁ ligado ao repo GitHub (branch main), mas o auto-deploy não disparou; usar "Manual Deploy → Deploy latest commit" no painel (feito pelo browser, sessão `render-magames`).
 
 ## Limites honestos (grátis)
 - Render free: dorme após 15 min sem uso → primeira abertura leva ~50 s (o app mostra "Acordando o servidor grátis…" e um ping a cada 4 min mantém acordado enquanto aberto).
