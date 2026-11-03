@@ -210,11 +210,11 @@ async def chat_stream(messages, temperature=0.7, prefer=None):
                 try:
                     while True:
                         try:
-                            t = await asyncio.wait_for(agen.__anext__(), 25 if not got else 40)
+                            t = await asyncio.wait_for(agen.__anext__(), (12 if name == "gemini" else 25) if not got else 40)
                         except StopAsyncIteration:
                             break
                         except asyncio.TimeoutError:
-                            te = RuntimeError(f"{name}: sem resposta em 25 s")
+                            te = RuntimeError(f"{name}: sem resposta a tempo")
                             te.status = 504
                             raise te
                         got = True
@@ -254,7 +254,7 @@ async def chat_stream(messages, temperature=0.7, prefer=None):
                         GEMINI_ALT_MODELS.remove(alt[0]); GEMINI_ALT_MODELS.append(alt[0])
                         continue
                 if st in (503, 504):
-                    mark_down(name, 90)  # sobrecarregado/lento: usa o próximo motor por 90 s
+                    mark_down(name, 300 if name == "gemini" else 90)  # sobrecarregado/lento: usa o próximo motor por 90 s
                     break
                 if st in (500, 502) and attempt == 0:
                     await asyncio.sleep(1.5)
