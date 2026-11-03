@@ -191,13 +191,34 @@ def _stage(job, p, msg):
     _log(job, msg)
 
 
-async def _run(job, args, timeout=1800):
+async def _run(job, args, timeout=1800, on_progress=None):
     if job["cancel"]:
         raise RuntimeError("cancelado")
+    if on_progress:
+        args = args[:1] + ["-progress", "pipe:1", "-nostats"] + args[1:]
     p = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     job["proc"] = p
+    out_parts = []
+
+    async def read_out():
+        while True:
+            line = await p.stdout.readline()
+            if not line:
+                break
+            t = line.decode("utf-8", "ignore")
+            if on_progress and t.startswith("out_time_us="):
+                try:
+                    on_progress(max(0, int(t.split("=", 1)[1].strip())) / 1e6)
+                except Exception:
+                    pass
+            elif not on_progress:
+                out_parts.append(t)
+
     try:
-        out, errb = await asyncio.wait_for(p.communicate(), timeout)
+        rd = asyncio.create_task(read_out())
+        errt = asyncio.create_task(p.stderr.read())
+        await asyncio.wait_for(asyncio.gather(rd, p.wait()), timeout)
+        errb = await errt
     except asyncio.TimeoutError:
         p.kill()
         raise RuntimeError("ffmpeg demorou demais")
@@ -207,7 +228,7 @@ async def _run(job, args, timeout=1800):
         raise RuntimeError("cancelado")
     if p.returncode != 0:
         raise RuntimeError(f"{os.path.basename(args[0])} falhou: " + errb.decode("utf-8", "ignore")[-400:])
-    return out.decode("utf-8", "ignore")
+    return "".join(out_parts)
 
 
 async def _duration(job, path):
@@ -358,11 +379,16 @@ async def _render(job):
             vf.append(f"subtitles={assp}")
         vf.append("format=yuv420p")
         cp = os.path.join(d, f"c{i}.mp4")
+
+        def prog(sec, base=base, span=span, i=i, dur=dur):
+            f = min(1.0, sec / max(dur, 0.1))
+            job["progress"] = round(max(job["progress"], min(base + span * (0.5 + 0.5 * f), 0.999)), 3)
+            job["stage"] = f"Cena {i+1}/{n}: montando {int(min(sec, dur))}/{int(dur)} s…"
         await _run(job, ["ffmpeg", "-y", "-loglevel", "error", "-loop", "1", "-framerate", str(fps), "-i", pre, "-i", ap,
                          "-filter_complex", f"[0:v]{','.join(vf)}[v];[1:a]adelay={int(lead*1000)}:all=1,apad,aresample=44100,afade=t=out:st={max(0, dur-0.35):.2f}:d=0.35[a]",
                          "-map", "[v]", "-map", "[a]", "-t", f"{dur:.2f}", "-r", str(fps),
-                         "-c:v", "libx264", "-preset", "superfast", "-crf", "28", "-maxrate", "2500k", "-bufsize", "5000k", "-g", str(fps * 4),
-                         "-c:a", "aac", "-b:a", "128k", "-ac", "2", "-ar", "44100", "-threads", "2", cp], 1800)
+                         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "27", "-maxrate", "2500k", "-bufsize", "5000k", "-g", str(fps * 4),
+                         "-c:a", "aac", "-b:a", "128k", "-ac", "2", "-ar", "44100", "-threads", "2", cp], 1800, on_progress=prog)
         clips.append(cp)
         total += dur
         for pth in (ip,):

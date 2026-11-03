@@ -2,9 +2,12 @@
 // - HTML sempre da rede (com cópia offline de reserva) → nunca fica preso numa versão quebrada
 // - assets com hash (/assets/*) em cache: são imutáveis
 // - NUNCA guarda chamadas de API nem arquivos de outros domínios
-const VERSION = 'mgia-v2.0.0';
+const VERSION = 'mgia-v2.1.0';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 self.addEventListener('install', (e) => {
+  // ativa na hora: HTML vem sempre da rede e assets têm hash, então trocar de versão é seguro
+  // (tira celulares presos no service worker antigo v1, que servia tudo do cache)
+  self.skipWaiting();
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).catch(() => {}));
 });
 self.addEventListener('message', (e) => { if (e.data === 'skipWaiting') self.skipWaiting(); });

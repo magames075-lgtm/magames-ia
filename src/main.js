@@ -7,7 +7,7 @@ import { getVoices, ttsBlob, stopQuick } from './voice.js';
 import { wake, onServerState, startKeepAlive, friendly } from './api.js';
 
 const $ = (s) => document.querySelector(s);
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.1.0';
 
 // ---------- tema ----------
 function applyTheme() {
@@ -111,10 +111,14 @@ let deferred = null;
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferred = e; $('#btnInstall').hidden = false; });
 $('#btnInstall').onclick = async () => { if (!deferred) return; deferred.prompt(); await deferred.userChoice; deferred = null; $('#btnInstall').hidden = true; };
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
-  navigator.serviceWorker.register('./sw.js').then((reg) => {
+  navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then((reg) => {
     const ask = (w) => {
       const bar = $('#updateBar'); bar.hidden = false;
-      $('#btnUpdate').onclick = () => w.postMessage('skipWaiting');
+      $('#btnUpdate').onclick = () => {
+        try { w.postMessage('skipWaiting'); } catch {}
+        $('#btnUpdate').disabled = true; $('#btnUpdate').textContent = 'Atualizando…';
+        setTimeout(() => location.reload(), 2500); // se o navegador não trocar sozinho, recarrega mesmo assim
+      };
     };
     if (reg.waiting && navigator.serviceWorker.controller) ask(reg.waiting);
     reg.addEventListener('updatefound', () => {

@@ -27,10 +27,11 @@ GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 GROQ_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 POLL_KEY = os.environ.get("POLLINATIONS_KEY", "").strip()
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
+GEMINI_ALT_MODELS = ["gemini-flash-lite-latest", "gemini-2.5-flash", "gemini-flash-latest"]
 MODEL_OVERRIDE: dict[str, str] = {}
 GEMINI_IMAGE_MODEL = os.environ.get("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 STARTED = time.time()
 
 app = FastAPI(title="MaGames IA API", version=VERSION)
@@ -244,6 +245,14 @@ async def chat_stream(messages, temperature=0.7, prefer=None):
                 if st in (401, 403):
                     mark_down(name, 600)
                     break
+                if st == 503 and name == "gemini" and attempt == 0:
+                    # modelo sobrecarregado: tenta outro modelo Gemini grátis antes de trocar de motor
+                    cur = MODEL_OVERRIDE.get("gemini", GEMINI_MODEL)
+                    alt = [m for m in GEMINI_ALT_MODELS if m != cur]
+                    if alt:
+                        MODEL_OVERRIDE["gemini"] = alt[0]
+                        GEMINI_ALT_MODELS.remove(alt[0]); GEMINI_ALT_MODELS.append(alt[0])
+                        continue
                 if st in (503, 504):
                     mark_down(name, 90)  # sobrecarregado/lento: usa o próximo motor por 90 s
                     break
