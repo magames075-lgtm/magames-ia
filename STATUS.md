@@ -33,3 +33,6 @@
 4. Mais imagens grátis no servidor: Cloudflare Workers AI (flux-1-schnell, cota diária grátis) precisa criar conta Cloudflare.
 5. Piper offline e WebLLM foram removidos do app (pesados e quebravam no celular); a voz e o chat agora vêm do servidor, com voz do sistema como reserva.
 6. Melhorias de vídeo: ETA na barra, música de verdade (biblioteca livre), escolher imagem por cena.
+
+## API 2.2.0 (09/11/2026) — Pluviômetro da vizinhança (ClimaA v1.3)
+- `POST /chuva/relato` {lat, lon, mm 0–500, agora: ""|fraca|forte|granizo} · `GET /chuva/relatos?lat&lon&raio_km(1–200)&horas(1–168)`. Coordenadas arredondadas a 0,01°, IP não gravado, 6 relatos/h por IP (429), relatos >8 dias apagados. SQLite em /tmp (CHUVA_DB): disco do Render grátis é efêmero, relatos somem a cada reinício/deploy. Deploy feito pela API do Render (dep-dbot0fjl550s73aq8qkg).
