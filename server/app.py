@@ -22,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse, FileResponse
 
 import video as videomod
+import chuva as chuvamod
 
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 GROQ_KEY = os.environ.get("GROQ_API_KEY", "").strip()
@@ -31,12 +32,14 @@ GEMINI_ALT_MODELS = ["gemini-flash-lite-latest", "gemini-2.5-flash", "gemini-fla
 MODEL_OVERRIDE: dict[str, str] = {}
 GEMINI_IMAGE_MODEL = os.environ.get("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
-VERSION = "2.1.0"
+VERSION = "2.2.0"
 STARTED = time.time()
 
 app = FastAPI(title="MaGames IA API", version=VERSION)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
                    expose_headers=["X-Provider", "X-Retry-After", "Content-Disposition"])
+
+app.include_router(chuvamod.router)
 
 client: httpx.AsyncClient | None = None
 
