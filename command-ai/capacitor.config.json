@@ -1,0 +1,6 @@
+{
+  "appId": "com.magames.commandai",
+  "appName": "Command AI",
+  "webDir": "www",
+  "android": { "allowMixedContent": false }
+}
