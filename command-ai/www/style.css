@@ -32,3 +32,4 @@ button:disabled{opacity:.5}
 .hi{border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0;background:var(--card)}
 .hi small{color:var(--mut)}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#222c3f;padding:10px 16px;border-radius:20px;z-index:20}
+hr{border:0;border-top:1px solid var(--line);margin:14px 0}
